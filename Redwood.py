@@ -8,7 +8,6 @@ import numpy as np
 import streamlit as st
 import imageio.v2 as imageio
 from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
-from rembg import remove
 
 
 st.set_page_config(page_title="Redwood", page_icon="🌲", layout="wide")
@@ -30,15 +29,40 @@ def fit_contain(img: Image.Image, max_w: int, max_h: int) -> Image.Image:
     return copy
 
 
-def remove_background(img: Image.Image) -> Image.Image:
+def safe_remove_background(img: Image.Image) -> Image.Image:
     """
-    Remove background automatically using rembg.
-    User does NOT need to remove background manually.
+    Background remover ringan untuk MVP.
+    Tidak seakurat AI, tapi aman untuk Streamlit Cloud.
+    Akan menghapus area yang sangat putih atau sangat hitam di pinggir.
     """
-    bio = io.BytesIO()
-    img.save(bio, format="PNG")
-    result = remove(bio.getvalue())
-    out = Image.open(io.BytesIO(result)).convert("RGBA")
+    arr = np.array(img).astype(np.uint8)
+    rgb = arr[:, :, :3]
+    alpha = arr[:, :, 3].copy()
+
+    brightness = rgb.mean(axis=2)
+
+    # Remove near-white background
+    white_mask = brightness > 245
+
+    # Remove near-black background
+    black_mask = brightness < 18
+
+    # Only aggressively remove edges so main object lebih aman
+    h, w = brightness.shape
+    edge_mask = np.zeros((h, w), dtype=bool)
+    margin_y = max(20, h // 12)
+    margin_x = max(20, w // 12)
+
+    edge_mask[:margin_y, :] = True
+    edge_mask[-margin_y:, :] = True
+    edge_mask[:, :margin_x] = True
+    edge_mask[:, -margin_x:] = True
+
+    final_mask = (white_mask | black_mask) & edge_mask
+    alpha[final_mask] = 0
+
+    arr[:, :, 3] = alpha
+    out = Image.fromarray(arr, mode="RGBA")
 
     bbox = out.getbbox()
     if bbox:
@@ -49,60 +73,41 @@ def remove_background(img: Image.Image) -> Image.Image:
 
 def create_gradient_background(size, preset="Midnight Blue"):
     w, h = size
-    bg = Image.new("RGBA", (w, h), (8, 10, 20, 255))
+    bg = Image.new("RGBA", (w, h), (5, 8, 24, 255))
     draw = ImageDraw.Draw(bg)
 
     if preset == "Midnight Blue":
-        top = np.array([4, 7, 24], dtype=np.float32)
-        bottom = np.array([2, 18, 75], dtype=np.float32)
+        top = np.array([4, 7, 22], dtype=np.float32)
+        bottom = np.array([2, 18, 72], dtype=np.float32)
     elif preset == "Warm Studio":
-        top = np.array([22, 14, 10], dtype=np.float32)
-        bottom = np.array([115, 82, 46], dtype=np.float32)
+        top = np.array([20, 14, 12], dtype=np.float32)
+        bottom = np.array([110, 80, 48], dtype=np.float32)
     else:
-        top = np.array([14, 14, 18], dtype=np.float32)
-        bottom = np.array([52, 52, 60], dtype=np.float32)
+        top = np.array([12, 12, 18], dtype=np.float32)
+        bottom = np.array([48, 48, 60], dtype=np.float32)
 
     for y in range(h):
         t = y / max(1, h - 1)
         rgb = tuple((top * (1 - t) + bottom * t).astype(np.uint8).tolist())
         draw.line([(0, y), (w, y)], fill=rgb + (255,))
 
+    # soft vignette
     vignette = Image.new("L", (w, h), 0)
     vg = ImageDraw.Draw(vignette)
     for i in range(10):
-        pad = i * 45
-        alpha = int(14 + i * 8)
+        pad = i * 42
+        alpha = int(12 + i * 8)
         vg.rounded_rectangle(
             [pad, pad, w - pad, h - pad],
-            radius=100,
+            radius=90,
             outline=alpha,
-            width=45,
+            width=42,
         )
-
     vignette = vignette.filter(ImageFilter.GaussianBlur(100))
+
     shadow = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     shadow.putalpha(vignette)
-    bg = Image.alpha_composite(bg, shadow)
-
-    return bg
-
-
-def create_light_beam(size):
-    w, h = size
-    beam = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(beam)
-
-    draw.polygon(
-        [
-            (int(w * 0.58), int(h * 0.22)),
-            (int(w * 0.70), int(h * 0.18)),
-            (int(w * 0.82), int(h * 0.70)),
-            (int(w * 0.67), int(h * 0.76)),
-        ],
-        fill=(255, 244, 225, 38),
-    )
-    beam = beam.filter(ImageFilter.GaussianBlur(60))
-    return beam
+    return Image.alpha_composite(bg, shadow)
 
 
 def create_table_surface(size):
@@ -110,47 +115,55 @@ def create_table_surface(size):
     surface = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     draw = ImageDraw.Draw(surface)
 
+    # main desk plane
     draw.polygon(
         [
-            (w * 0.10, h * 0.60),
-            (w * 0.80, h * 0.50),
-            (w * 1.02, h * 0.96),
+            (w * 0.12, h * 0.58),
+            (w * 0.82, h * 0.49),
+            (w * 1.03, h * 0.95),
             (w * -0.05, h * 1.02),
         ],
-        fill=(222, 202, 180, 245),
+        fill=(224, 203, 181, 245),
     )
 
-    curve_color = (150, 105, 85, 120)
+    # decorative arcs like deskmat
+    curve_color = (150, 105, 85, 110)
     for i in range(7):
         bbox = [
-            int(-w * 0.22 + i * 40),
+            int(-w * 0.22 + i * 38),
             int(h * 0.50 + i * 16),
-            int(w * 0.38 + i * 40),
-            int(h * 1.03 + i * 16),
+            int(w * 0.40 + i * 38),
+            int(h * 1.02 + i * 16),
         ]
         draw.arc(bbox, start=200, end=310, fill=curve_color, width=3)
 
-    return surface.filter(ImageFilter.GaussianBlur(0.5))
+    return surface.filter(ImageFilter.GaussianBlur(0.4))
 
 
-def make_shadow_layer(size, bbox, blur=45, opacity=110, radius=50):
+def create_light_beam(size):
     w, h = size
-    layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(layer)
-    draw.rounded_rectangle(bbox, radius=radius, fill=(0, 0, 0, opacity))
-    return layer.filter(ImageFilter.GaussianBlur(blur))
+    beam = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    d = ImageDraw.Draw(beam)
+
+    d.polygon(
+        [
+            (int(w * 0.58), int(h * 0.23)),
+            (int(w * 0.72), int(h * 0.20)),
+            (int(w * 0.84), int(h * 0.72)),
+            (int(w * 0.68), int(h * 0.78)),
+        ],
+        fill=(255, 244, 225, 34),
+    )
+    return beam.filter(ImageFilter.GaussianBlur(65))
 
 
-def make_floor_shadow(obj: Image.Image, scale_x=1.0, scale_y=0.28, opacity=105):
+def create_floor_shadow(obj: Image.Image, opacity=105):
     alpha = obj.getchannel("A")
     shadow = Image.new("RGBA", obj.size, (0, 0, 0, 0))
     shadow.putalpha(alpha)
 
     shadow = shadow.resize(
-        (
-            max(1, int(shadow.size[0] * scale_x)),
-            max(1, int(shadow.size[1] * scale_y)),
-        ),
+        (max(1, int(obj.size[0] * 1.08)), max(1, int(obj.size[1] * 0.24))),
         Image.Resampling.LANCZOS,
     )
 
@@ -161,11 +174,11 @@ def make_floor_shadow(obj: Image.Image, scale_x=1.0, scale_y=0.28, opacity=105):
     arr[:, :, 3] = (arr[:, :, 3].astype(np.float32) * (opacity / 255.0)).astype(np.uint8)
 
     shadow = Image.fromarray(arr, mode="RGBA")
-    shadow = shadow.filter(ImageFilter.GaussianBlur(22))
-    return shadow
+    return shadow.filter(ImageFilter.GaussianBlur(22))
 
 
 def try_font(size, bold=False):
+    candidates = []
     if bold:
         candidates = [
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -180,7 +193,6 @@ def try_font(size, bold=False):
     for path in candidates:
         if os.path.exists(path):
             return ImageFont.truetype(path, size=size)
-
     return ImageFont.load_default()
 
 
@@ -188,9 +200,9 @@ def add_text_overlay(canvas, headline, subheadline, product_name, model_name):
     draw = ImageDraw.Draw(canvas)
     w, h = canvas.size
 
-    title_font = try_font(78, bold=True)
-    small_font = try_font(28, bold=False)
-    product_font = try_font(56, bold=True)
+    title_font = try_font(82, bold=True)
+    sub_font = try_font(28, bold=False)
+    product_font = try_font(58, bold=True)
     model_font = try_font(24, bold=False)
 
     title = headline.upper()
@@ -203,12 +215,12 @@ def add_text_overlay(canvas, headline, subheadline, product_name, model_name):
         fill=(255, 255, 255, 245),
     )
 
-    sub_bbox = draw.textbbox((0, 0), subheadline, font=small_font)
+    sub_bbox = draw.textbbox((0, 0), subheadline, font=sub_font)
     sub_w = sub_bbox[2] - sub_bbox[0]
     draw.text(
         ((w - sub_w) / 2, int(h * 0.18)),
         subheadline,
-        font=small_font,
+        font=sub_font,
         fill=(255, 255, 255, 230),
     )
 
@@ -222,7 +234,7 @@ def add_text_overlay(canvas, headline, subheadline, product_name, model_name):
         fill=(255, 255, 255, 245),
     )
     draw.text(
-        (px, py + 58),
+        (px, py + 60),
         model_name,
         font=model_font,
         fill=(255, 255, 255, 230),
@@ -237,16 +249,8 @@ def add_text_overlay(canvas, headline, subheadline, product_name, model_name):
         fill=(255, 255, 255, 235),
         width=4,
     )
-    ad.line(
-        [(px + 62, py + 28), (px + 76, py + 44)],
-        fill=(255, 255, 255, 235),
-        width=4,
-    )
-    ad.line(
-        [(px + 62, py + 28), (px + 58, py + 49)],
-        fill=(255, 255, 255, 235),
-        width=4,
-    )
+    ad.line([(px + 62, py + 28), (px + 76, py + 44)], fill=(255, 255, 255, 235), width=4)
+    ad.line([(px + 62, py + 28), (px + 58, py + 49)], fill=(255, 255, 255, 235), width=4)
     canvas.alpha_composite(arrow)
 
     return canvas
@@ -263,10 +267,9 @@ def compose_promo_image(
 ):
     canvas_size = (1080, 1920)
     canvas = create_gradient_background(canvas_size, bg_preset)
-    desk = create_table_surface(canvas_size)
-    canvas = Image.alpha_composite(canvas, desk)
+    canvas = Image.alpha_composite(canvas, create_table_surface(canvas_size))
 
-    laptop = remove_background(laptop_img)
+    laptop = safe_remove_background(laptop_img)
     laptop = fit_contain(laptop, 760, 760)
 
     rgb = laptop.convert("RGB")
@@ -280,35 +283,16 @@ def compose_promo_image(
     w, h = canvas.size
     lw, lh = laptop.size
     x = int((w - lw) * 0.44)
-    y = int((h - lh) * 0.47)
+    y = int((h - lh) * 0.46)
 
-    floor_shadow = make_floor_shadow(laptop, scale_x=1.08, scale_y=0.26, opacity=115)
+    floor_shadow = create_floor_shadow(laptop, opacity=110)
     fsw, fsh = floor_shadow.size
-    canvas.alpha_composite(floor_shadow, (x + 10, y + lh - int(fsh * 0.25)))
-
-    soft_shadow_1 = make_shadow_layer(
-        canvas_size,
-        [x + 20, y + 135, x + lw - 65, y + lh - 20],
-        blur=46,
-        opacity=72,
-        radius=55,
-    )
-    soft_shadow_2 = make_shadow_layer(
-        canvas_size,
-        [x - 15, y + 210, x + lw - 185, y + lh + 20],
-        blur=62,
-        opacity=48,
-        radius=65,
-    )
-    canvas = Image.alpha_composite(canvas, soft_shadow_1)
-    canvas = Image.alpha_composite(canvas, soft_shadow_2)
+    canvas.alpha_composite(floor_shadow, (x + 8, y + lh - int(fsh * 0.18)))
 
     canvas.alpha_composite(laptop, (x, y))
-
-    beam = create_light_beam(canvas_size)
-    canvas = Image.alpha_composite(canvas, beam)
-
+    canvas = Image.alpha_composite(canvas, create_light_beam(canvas_size))
     canvas = add_text_overlay(canvas, headline, subheadline, product_name, model_name)
+
     return canvas
 
 
@@ -346,10 +330,8 @@ def generate_video_from_image(img: Image.Image, duration_sec=5, fps=24):
         top = max(0, min(h - crop_h, cy - crop_h // 2))
 
         frame = base.crop((left, top, left + crop_w, top + crop_h)).resize(
-            (w, h),
-            Image.Resampling.LANCZOS,
+            (w, h), Image.Resampling.LANCZOS
         )
-
         frame = ImageEnhance.Brightness(frame).enhance(
             1.0 + 0.04 * math.sin(t * math.pi)
         )
@@ -364,7 +346,7 @@ def generate_video_from_image(img: Image.Image, duration_sec=5, fps=24):
 # UI
 # =========================================================
 st.title("🌲 Redwood")
-st.caption("Upload foto laptop → otomatis hapus background → ubah jadi visual promo cinematic → export image dan video pendek.")
+st.caption("Upload foto laptop → generate visual promo cinematic → export image dan video pendek.")
 
 with st.sidebar:
     st.header("Redwood Settings")
@@ -406,16 +388,19 @@ if uploaded:
 
     if st.button("Generate with Redwood", type="primary"):
         with st.spinner("Redwood sedang membuat promo image..."):
-            promo = compose_promo_image(
-                laptop_img=user_img,
-                headline=headline,
-                subheadline=subheadline,
-                product_name=product_name,
-                model_name=model_name,
-                bg_preset=bg_preset,
-                enhance_level=enhance_level,
-            )
-            st.session_state["promo_img"] = promo
+            try:
+                promo = compose_promo_image(
+                    laptop_img=user_img,
+                    headline=headline,
+                    subheadline=subheadline,
+                    product_name=product_name,
+                    model_name=model_name,
+                    bg_preset=bg_preset,
+                    enhance_level=enhance_level,
+                )
+                st.session_state["promo_img"] = promo
+            except Exception as e:
+                st.error(f"Gagal generate image: {e}")
 
 if "promo_img" in st.session_state:
     promo = st.session_state["promo_img"]
@@ -443,14 +428,17 @@ if "promo_img" in st.session_state:
 
     if st.button("Generate Redwood Video"):
         with st.spinner("Redwood sedang render video..."):
-            video_path = generate_video_from_image(
-                promo,
-                duration_sec=duration_sec,
-                fps=24,
-            )
-            with open(video_path, "rb") as f:
-                video_bytes = f.read()
-            st.session_state["video_bytes"] = video_bytes
+            try:
+                video_path = generate_video_from_image(
+                    promo,
+                    duration_sec=duration_sec,
+                    fps=24,
+                )
+                with open(video_path, "rb") as f:
+                    video_bytes = f.read()
+                st.session_state["video_bytes"] = video_bytes
+            except Exception as e:
+                st.error(f"Gagal generate video: {e}")
 
 if "video_bytes" in st.session_state:
     st.subheader("Preview Video")
@@ -467,7 +455,7 @@ st.markdown(
     """
 ### Next upgrade untuk Redwood
 - tambah preset layout lain
-- sambungkan ke image editing API agar hasil lebih premium
+- tambahkan auto background removal yang lebih pintar
 - tambahkan text animation dan transition preset
 - simpan history hasil generate
 """
