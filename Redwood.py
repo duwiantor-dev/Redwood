@@ -32,8 +32,7 @@ def fit_contain(img: Image.Image, max_w: int, max_h: int) -> Image.Image:
 def safe_remove_background(img: Image.Image) -> Image.Image:
     """
     Background remover ringan untuk MVP.
-    Tidak seakurat AI, tapi aman untuk Streamlit Cloud.
-    Akan menghapus area yang sangat putih atau sangat hitam di pinggir.
+    Hapus area sangat putih / sangat hitam di pinggir gambar.
     """
     arr = np.array(img).astype(np.uint8)
     rgb = arr[:, :, :3]
@@ -41,13 +40,9 @@ def safe_remove_background(img: Image.Image) -> Image.Image:
 
     brightness = rgb.mean(axis=2)
 
-    # Remove near-white background
     white_mask = brightness > 245
-
-    # Remove near-black background
     black_mask = brightness < 18
 
-    # Only aggressively remove edges so main object lebih aman
     h, w = brightness.shape
     edge_mask = np.zeros((h, w), dtype=bool)
     margin_y = max(20, h // 12)
@@ -91,7 +86,6 @@ def create_gradient_background(size, preset="Midnight Blue"):
         rgb = tuple((top * (1 - t) + bottom * t).astype(np.uint8).tolist())
         draw.line([(0, y), (w, y)], fill=rgb + (255,))
 
-    # soft vignette
     vignette = Image.new("L", (w, h), 0)
     vg = ImageDraw.Draw(vignette)
     for i in range(10):
@@ -115,7 +109,6 @@ def create_table_surface(size):
     surface = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     draw = ImageDraw.Draw(surface)
 
-    # main desk plane
     draw.polygon(
         [
             (w * 0.12, h * 0.58),
@@ -126,7 +119,6 @@ def create_table_surface(size):
         fill=(224, 203, 181, 245),
     )
 
-    # decorative arcs like deskmat
     curve_color = (150, 105, 85, 110)
     for i in range(7):
         bbox = [
@@ -377,12 +369,12 @@ uploaded = st.file_uploader(
     type=["png", "jpg", "jpeg", "webp"],
 )
 
-col1, col2 = st.columns(2)
-
 if uploaded:
     user_img = load_image(uploaded)
 
-    with col1:
+    top_left, top_mid, top_right = st.columns([1.5, 1.0, 0.9])
+
+    with top_left:
         st.subheader("Foto Asli")
         st.image(user_img, use_container_width=True)
 
@@ -399,59 +391,93 @@ if uploaded:
                     enhance_level=enhance_level,
                 )
                 st.session_state["promo_img"] = promo
+                st.session_state.pop("video_bytes", None)
             except Exception as e:
                 st.error(f"Gagal generate image: {e}")
 
-if "promo_img" in st.session_state:
-    promo = st.session_state["promo_img"]
-
-    with col2:
+    with top_mid:
         st.subheader("Hasil Redwood")
-        st.image(promo, width=320)
+        if "promo_img" in st.session_state:
+            st.image(st.session_state["promo_img"], width=270)
+        else:
+            st.info("Hasil image akan muncul di sini.")
 
-    png_bytes = pil_to_bytes(promo, fmt="PNG")
-    jpg_bytes = pil_to_bytes(promo, fmt="JPG")
+    with top_right:
+        st.subheader("Preview Video")
+        if "video_bytes" in st.session_state:
+            st.video(st.session_state["video_bytes"])
+        else:
+            st.markdown(
+                """
+                <div style="
+                    height: 520px;
+                    border: 2px dashed #ff6b6b;
+                    border-radius: 12px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    text-align: center;
+                    color: #ff3b30;
+                    font-size: 20px;
+                    font-weight: 600;
+                    padding: 20px;
+                ">
+                    HASIL VIDEO MUNCUL<br>DISINI SAJA
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
-    d1, d2 = st.columns(2)
-    d1.download_button(
-        "Download PNG",
-        data=png_bytes,
-        file_name="redwood_promo_laptop.png",
-        mime="image/png",
-    )
-    d2.download_button(
-        "Download JPG",
-        data=jpg_bytes,
-        file_name="redwood_promo_laptop.jpg",
-        mime="image/jpeg",
-    )
+    if "promo_img" in st.session_state:
+        st.markdown("### Download Hasil")
+        d1, d2, d3 = st.columns([1, 1, 1.2])
 
-    if st.button("Generate Redwood Video"):
-        with st.spinner("Redwood sedang render video..."):
-            try:
-                video_path = generate_video_from_image(
-                    promo,
-                    duration_sec=duration_sec,
-                    fps=24,
-                )
-                with open(video_path, "rb") as f:
-                    video_bytes = f.read()
-                st.session_state["video_bytes"] = video_bytes
-            except Exception as e:
-                st.error(f"Gagal generate video: {e}")
+        promo = st.session_state["promo_img"]
+        png_bytes = pil_to_bytes(promo, fmt="PNG")
+        jpg_bytes = pil_to_bytes(promo, fmt="JPG")
 
-if "video_bytes" in st.session_state:
-    st.subheader("Preview Video")
+        with d1:
+            st.download_button(
+                "Download PNG",
+                data=png_bytes,
+                file_name="redwood_promo_laptop.png",
+                mime="image/png",
+                use_container_width=True,
+            )
 
-    preview_col1, preview_col2, preview_col3 = st.columns([1, 2, 1])
-    with preview_col2:
-        st.video(st.session_state["video_bytes"])
-    st.download_button(
-        "Download MP4",
-        data=st.session_state["video_bytes"],
-        file_name="redwood_promo_laptop_video.mp4",
-        mime="video/mp4",
-    )
+        with d2:
+            st.download_button(
+                "Download JPG",
+                data=jpg_bytes,
+                file_name="redwood_promo_laptop.jpg",
+                mime="image/jpeg",
+                use_container_width=True,
+            )
+
+        with d3:
+            if st.button("Generate Redwood Video", use_container_width=True):
+                with st.spinner("Redwood sedang render video..."):
+                    try:
+                        video_path = generate_video_from_image(
+                            promo,
+                            duration_sec=duration_sec,
+                            fps=24,
+                        )
+                        with open(video_path, "rb") as f:
+                            video_bytes = f.read()
+                        st.session_state["video_bytes"] = video_bytes
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Gagal generate video: {e}")
+
+        if "video_bytes" in st.session_state:
+            st.download_button(
+                "Download MP4",
+                data=st.session_state["video_bytes"],
+                file_name="redwood_promo_laptop_video.mp4",
+                mime="video/mp4",
+                use_container_width=False,
+            )
 
 st.markdown("---")
 st.markdown(
