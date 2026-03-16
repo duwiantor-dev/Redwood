@@ -170,7 +170,6 @@ def create_floor_shadow(obj: Image.Image, opacity=105):
 
 
 def try_font(size, bold=False):
-    candidates = []
     if bold:
         candidates = [
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -185,6 +184,7 @@ def try_font(size, bold=False):
     for path in candidates:
         if os.path.exists(path):
             return ImageFont.truetype(path, size=size)
+
     return ImageFont.load_default()
 
 
@@ -278,7 +278,7 @@ def compose_promo_image(
     y = int((h - lh) * 0.46)
 
     floor_shadow = create_floor_shadow(laptop, opacity=110)
-    fsw, fsh = floor_shadow.size
+    _, fsh = floor_shadow.size
     canvas.alpha_composite(floor_shadow, (x + 8, y + lh - int(fsh * 0.18)))
 
     canvas.alpha_composite(laptop, (x, y))
@@ -369,10 +369,12 @@ uploaded = st.file_uploader(
     type=["png", "jpg", "jpeg", "webp"],
 )
 
+preview_ratio_cols = [0.12, 0.76, 0.12]
+
 if uploaded:
     user_img = load_image(uploaded)
 
-    top_left, top_mid, top_right = st.columns([1.5, 1.0, 0.9])
+    top_left, top_mid, top_right = st.columns([1.5, 1.0, 1.0])
 
     with top_left:
         st.subheader("Foto Asli")
@@ -397,36 +399,42 @@ if uploaded:
 
     with top_mid:
         st.subheader("Hasil Redwood")
-        if "promo_img" in st.session_state:
-            st.image(st.session_state["promo_img"], width=270)
-        else:
-            st.info("Hasil image akan muncul di sini.")
+        mid_left, mid_center, mid_right = st.columns(preview_ratio_cols)
+        with mid_center:
+            if "promo_img" in st.session_state:
+                st.image(st.session_state["promo_img"], use_container_width=True)
+            else:
+                st.info("Hasil image akan muncul di sini.")
 
     with top_right:
         st.subheader("Preview Video")
-        if "video_bytes" in st.session_state:
-            st.video(st.session_state["video_bytes"])
-        else:
-            st.markdown(
-                """
-                <div style="
-                    height: 520px;
-                    border: 2px dashed #ff6b6b;
-                    border-radius: 12px;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    text-align: center;
-                    color: #ff3b30;
-                    font-size: 20px;
-                    font-weight: 600;
-                    padding: 20px;
-                ">
-                    HASIL VIDEO MUNCUL<br>DISINI SAJA
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+        vid_left, vid_center, vid_right = st.columns(preview_ratio_cols)
+        with vid_center:
+            if "video_bytes" in st.session_state:
+                st.video(st.session_state["video_bytes"])
+            else:
+                st.markdown(
+                    """
+                    <div style="
+                        aspect-ratio: 9 / 16;
+                        width: 100%;
+                        border: 2px dashed #ff6b6b;
+                        border-radius: 12px;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        text-align: center;
+                        color: #ff3b30;
+                        font-size: 20px;
+                        font-weight: 600;
+                        padding: 20px;
+                        box-sizing: border-box;
+                    ">
+                        HASIL VIDEO MUNCUL<br>DISINI SAJA
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
     if "promo_img" in st.session_state:
         st.markdown("### Download Hasil")
@@ -476,7 +484,6 @@ if uploaded:
                 data=st.session_state["video_bytes"],
                 file_name="redwood_promo_laptop_video.mp4",
                 mime="video/mp4",
-                use_container_width=False,
             )
 
 st.markdown("---")
