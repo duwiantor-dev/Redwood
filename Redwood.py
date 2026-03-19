@@ -872,7 +872,6 @@ st.plotly_chart(fig_cum, use_container_width=True)
 # Pareto + Delta + Comparison
 # =========================
 st.markdown("<hr/>", unsafe_allow_html=True)
-st.subheader("Pareto + Delta + Comparison (This Vs Last Month)")
 
 pareto_dim = st.selectbox(
     "Dimensi Pareto",
