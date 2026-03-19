@@ -751,7 +751,7 @@ COLOR_MAP_PERIOD = {
 # =========================
 # Trend chart (Day-of-Month comparison)
 # =========================
-st.subheader(f"Tren Harian ({metric_name}) — Day of Month Comparison")
+st.subheader(f"Tren Harian ({metric_name}) )
 
 
 def day_of_month_series(df: pd.DataFrame, label: str) -> pd.DataFrame:
@@ -806,7 +806,7 @@ st.plotly_chart(fig, use_container_width=True)
 # Cumulative chart
 # =========================
 st.markdown("<hr/>", unsafe_allow_html=True)
-st.subheader(f"Statistik Kumulatif ({metric_name}) — Day of Month Comparison")
+st.subheader(f"Statistik Kumulatif ({metric_name}))
 
 trend_cum = trend_dom.copy()
 trend_cum = trend_cum.sort_values(["PERIODE", "DAY"]).copy()
@@ -874,7 +874,7 @@ st.plotly_chart(fig_cum, use_container_width=True)
 st.markdown("<hr/>", unsafe_allow_html=True)
 
 pareto_dim = st.selectbox(
-    "Dimensi Pareto",
+    "Filter Pareto",
     ["PLATFORM", "TEAM", "PRODUCT", "COUNTRY", "BRAND", "TRANSAKSI", "AREA"],
     index=1,
 )
