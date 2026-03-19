@@ -812,27 +812,52 @@ trend_cum = trend_dom.copy()
 trend_cum = trend_cum.sort_values(["PERIODE", "DAY"]).copy()
 trend_cum["CUM_VALUE"] = trend_cum.groupby("PERIODE")["VALUE"].cumsum()
 
-if show_point_labels:
-    trend_cum["LABEL"] = trend_cum["CUM_VALUE"].apply(compact_number)
-    fig_cum = px.line(
-        trend_cum,
-        x="DAY",
-        y="CUM_VALUE",
-        color="PERIODE",
-        markers=True,
-        text="LABEL",
-        color_discrete_map=COLOR_MAP_PERIOD,
+# super clean compare hover: tampilkan Bulan Ini + Bulan Lalu + Delta dalam satu hover
+trend_compare = (
+    trend_cum.pivot(index="DAY", columns="PERIODE", values="CUM_VALUE")
+    .reset_index()
+    .rename_axis(None, axis=1)
+)
+
+if "Bulan Ini" not in trend_compare.columns:
+    trend_compare["Bulan Ini"] = 0
+if "Bulan Lalu" not in trend_compare.columns:
+    trend_compare["Bulan Lalu"] = 0
+
+trend_compare["Bulan Ini"] = trend_compare["Bulan Ini"].fillna(0)
+trend_compare["Bulan Lalu"] = trend_compare["Bulan Lalu"].fillna(0)
+trend_compare["DELTA"] = trend_compare["Bulan Ini"] - trend_compare["Bulan Lalu"]
+
+trend_cum = trend_cum.merge(
+    trend_compare[["DAY", "Bulan Ini", "Bulan Lalu", "DELTA"]],
+    on="DAY",
+    how="left"
+)
+
+trend_cum["BULAN_INI_TXT"] = trend_cum["Bulan Ini"].apply(compact_number)
+trend_cum["BULAN_LALU_TXT"] = trend_cum["Bulan Lalu"].apply(compact_number)
+trend_cum["DELTA_TXT"] = trend_cum["DELTA"].apply(
+    lambda x: f"+{compact_number(x)}" if x > 0 else compact_number(x)
+)
+
+fig_cum = px.line(
+    trend_cum,
+    x="DAY",
+    y="CUM_VALUE",
+    color="PERIODE",
+    markers=True,
+    color_discrete_map=COLOR_MAP_PERIOD,
+    custom_data=["BULAN_INI_TXT", "BULAN_LALU_TXT", "DELTA_TXT"],
+)
+
+fig_cum.update_traces(
+    hovertemplate=(
+        "<b>Hari %{x}</b><br>"
+        "Bulan Ini: %{customdata[0]}<br>"
+        "Bulan Lalu: %{customdata[1]}<br>"
+        "Delta: %{customdata[2]}<extra>%{fullData.name}</extra>"
     )
-    fig_cum.update_traces(textposition="top center")
-else:
-    fig_cum = px.line(
-        trend_cum,
-        x="DAY",
-        y="CUM_VALUE",
-        color="PERIODE",
-        markers=True,
-        color_discrete_map=COLOR_MAP_PERIOD,
-    )
+)
 
 fig_cum.update_layout(
     xaxis_title="Tanggal (Day of Month)",
