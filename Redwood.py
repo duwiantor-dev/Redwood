@@ -906,14 +906,18 @@ def build_pareto_comparison(df_this: pd.DataFrame, df_last: pd.DataFrame, dim_co
     comp["LAST_SHARE"] = np.where(total_last != 0, comp["LAST_VALUE"] / total_last * 100.0, 0.0)
     comp["PARETO_THIS"] = comp["THIS_SHARE"].cumsum()
     comp["PARETO_LAST"] = comp["LAST_SHARE"].cumsum()
+    comp["PARETO_COUNT"] = np.arange(1, len(comp) + 1)
     comp["DELTA_SHARE"] = comp["THIS_SHARE"] - comp["LAST_SHARE"]
     comp["DELTA_LABEL"] = comp["DELTA_SHARE"].map(lambda x: f"{x:+.1f}%")
 
     comp["BAR_HOVER"] = comp.apply(
         lambda r: (
-            f"<b>TOTAL</b><br>"
+            f"<b>{r[dim_col]}</b><br>"
             f"{label_this}: {compact_number(r['THIS_VALUE'])}<br>"
-            f"{label_last}: {compact_number(r['LAST_VALUE'])}"
+            f"{label_last}: {compact_number(r['LAST_VALUE'])}<br>"
+            f"Kontribusi {label_this}: {r['THIS_SHARE']:.2f}%<br>"
+            f"Kontribusi {label_last}: {r['LAST_SHARE']:.2f}%<br>"
+            f"Delta kontribusi: {r['DELTA_SHARE']:+.2f}%"
         ),
         axis=1,
     )
